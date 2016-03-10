@@ -12,7 +12,12 @@ import (
 const config_file_name = ".go-bean"
 
 type GoBeanConfig struct {
-	AppName string
+	AppName     string
+	EnvName     string
+	S3Bucket    string
+	DockerHost  string
+	ProgramName string
+	ProgramPort string
 }
 
 func ConfigFilePath() string {
@@ -72,6 +77,11 @@ func Command_Config() error {
 	} else {
 		println("go-bean Configuration: ")
 		println("  Application Name: " + conf.AppName)
+		println("  Env Name:         " + conf.EnvName)
+		println("  S3 Bucket :       " + conf.S3Bucket)
+		println("  Docker Host :     " + conf.DockerHost)
+		println("  Program Name:     " + conf.ProgramName)
+		println("  Program Port:     " + conf.ProgramPort)
 		println("")
 		return nil
 	}
