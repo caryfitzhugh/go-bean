@@ -3,7 +3,8 @@ package main
 import (
 	"errors"
 	//"fmt"
-	"github.com/hashicorp/go-version"
+	//	"github.com/hashicorp/go-version"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"strings"
@@ -14,21 +15,30 @@ const tag_prefix = "go-bean"
 func GitAllCheckedIn() bool {
 	pwd, err := os.Getwd()
 	if err != nil {
-		return err
+		return false
 	} else {
 		return GitAllCheckedInInDir(pwd)
 	}
 }
 
-func GitAllCheckedInInDir(dir string) bool {
+func GitAllCheckedInInDir(working_dir string) bool {
 	cmdName := "git"
-	cmdArgs := []string{"tag", "-f", tag_prefix + "-" + ver}
+	cmdArgs := []string{"diff", "--exit-code"}
 	cmd := exec.Command(cmdName, cmdArgs...)
 	cmd.Dir = working_dir
 	if err := cmd.Run(); err != nil {
-		return errors.New("There was an error running git tag command")
+		return false
 	}
-	return nil
+
+	cmdName = "git"
+	cmdArgs = []string{"diff", "--cached", "--exit-code"}
+	cmd = exec.Command(cmdName, cmdArgs...)
+	cmd.Dir = working_dir
+	if err := cmd.Run(); err != nil {
+		return false
+	}
+
+	return true
 }
 
 func GitTagCurrent(ver string) error {
@@ -82,11 +92,19 @@ func GetCurVer() (string, error) {
 	if err != nil {
 		return "", err
 	} else {
+		filename := pwd + "/VERSION"
+
+		if _, err := os.Stat(filename); os.IsNotExist(err) {
+			// path/to/whatever does not exist
+			// So write and return "v0.0.0"
+			_ = SaveCurVer("0.0.0")
+		}
+
 		ver, verr := ioutil.ReadFile(pwd + "/VERSION")
 		if verr != nil {
 			return "", verr
 		} else {
-			return string(ver)
+			return string(ver), nil
 		}
 	}
 }
@@ -96,9 +114,9 @@ func SaveCurVer(ver string) error {
 	if err != nil {
 		return err
 	} else {
-		ver, verr := ioutil.WriteFile(pwd+"/VERSION", ver, 0644)
-		if verr != nil {
-			return verr
+		err = ioutil.WriteFile(pwd+"/VERSION", []byte(ver), 0644)
+		if err != nil {
+			return err
 		} else {
 			return nil
 		}
