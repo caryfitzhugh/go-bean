@@ -72,6 +72,7 @@ func main() {
 			Action: func(c *cli.Context) {
 				conf, config_err := LoadConfig()
 				check_ack(config_err)
+
 				check_ack(PerformSnapshot(conf))
 			},
 		},
