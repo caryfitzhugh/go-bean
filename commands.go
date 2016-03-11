@@ -2,8 +2,9 @@ package main
 
 import (
 	"errors"
-	//"fmt"
+	"fmt"
 	"github.com/hashicorp/go-version"
+	"time"
 	//	"strings"
 )
 
@@ -14,15 +15,14 @@ func PerformSnapshot(conf GoBeanConfig) error {
 	sha, err_ref := GetGitRef()
 	check_ack(err_ref)
 
-	snapshot_version := cur_ver + "@" + sha
+	snapshot_version := fmt.Sprintf("%v-%v-%v", cur_ver, sha, time.Now().Unix())
 
 	if !GitAllCheckedIn() {
 		snapshot_version += "-dirty"
 	}
 
 	println("Snapshot version:" + snapshot_version)
-	DeployVersion(conf, snapshot_version)
-	return nil
+	return DeployVersion(conf, snapshot_version)
 }
 
 func PerformRelease(conf GoBeanConfig, release_version string) error {
@@ -61,50 +61,56 @@ func PerformRelease(conf GoBeanConfig, release_version string) error {
 
 	SaveCurVer(new_version)
 
-	DeployVersion(conf, new_version)
-	return nil
+	return DeployVersion(conf, new_version)
 }
 
 func DeployVersion(conf GoBeanConfig, version string) error {
-	println("Building static linux executable")
+	print("Building static linux executable...")
 	err := BuildBinary(conf.ProgramName)
 	if err != nil {
 		return err
 	}
+	println("Done")
 
-	println("Building docker container")
+	print("Building docker container...")
 	err = BuildDockerImage(conf.ProgramName, conf.ProgramPort, version)
 	if err != nil {
 		return err
 	}
+	println("Done")
 
+	print("Logging into ECR...")
 	err = LoginToECR()
 	if err != nil {
 		return err
 	}
+	println("Done")
 
 	// Now push it to ECR
-	println("Pushing image to container repository")
+	print("Pushing image to container repository...")
 	err = PushToRepository(conf.ProgramName, version, conf.DockerHost)
 	if err != nil {
 		return err
 	}
+	println("Done")
 
-	println("Creating Application Version")
+	print("Creating Application Version...")
 	var app_ver string
 
 	app_ver, err = CreateApplicationVersion(conf.AppName, version, conf.ProgramName, conf.DockerHost, conf.ProgramPort, conf.S3Bucket)
 	if err != nil {
 		return err
 	}
+	println("Done")
 
-	println("Updating env: " + conf.EnvName)
+	print("Updating env: " + conf.EnvName + "...")
 	err = UpdateEBEnvironment(conf.EnvName, app_ver)
 	if err != nil {
 		return err
 	}
+	println("Done")
 
-	println("Waiting for update to complete.")
+	print("Waiting for update to complete.")
 	err = WaitForEBToBeReady(conf.EnvName, app_ver)
 	if err != nil {
 		return err

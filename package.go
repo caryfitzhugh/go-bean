@@ -60,25 +60,31 @@ func BuildDockerImageInDir(program_name string, program_port string, version_tag
 	defer os.Remove(file.Name())
 
 	if tempfile_err != nil {
-		return tempfile_err
+		return errors.New("Failed to create a temp dockerfile")
 	}
 
 	// Write out the tempfile
 	dockerfile_contents := []byte("FROM scratch\nADD . /\nCMD [\"/" + program_name + "\"]\nEXPOSE " + program_port + "\n")
 	tempfile_err = ioutil.WriteFile(file.Name(), dockerfile_contents, 0644)
 	if tempfile_err != nil {
-		return tempfile_err
+		return errors.New("Failed to write the template for the dockerfile")
 	}
 
+	var cmd_output bytes.Buffer
+	var cmd_stderr bytes.Buffer
 	cmdName := "sudo"
 	cmdArgs := []string{"docker", "build", "-t", program_name + ":" + version_tag, "-f", file.Name(), "."}
 	cmd := exec.Command(cmdName, cmdArgs...)
 	cmd.Dir = working_dir
+	cmd.Stdout = &cmd_output
+	cmd.Stderr = &cmd_stderr
 
 	if err := cmd.Run(); err != nil {
-		fmt.Printf("%v", err)
-		return errors.New("There was an error running docker build")
+		return errors.New("There was an error running docker build: \n\n" +
+			fmt.Sprint("%v", cmdArgs) + "\n" +
+			fmt.Sprint(err) + ": " + cmd_stderr.String())
 	}
+
 	return nil
 }
 
@@ -113,23 +119,12 @@ func LoginToECR() error {
 // It returns the string which is the path for the docker image
 // i.e. 234234234234.ecr.amazon.com/program_name:$VERSION_TAG
 func PushToRepository(program_name string, version_tag string, docker_host string) error {
-	cmdName := "sudo"
-	cmdArgs := []string{"docker", "tag", "-f", program_name + ":" + version_tag,
-		TaggedName(docker_host, program_name, version_tag)}
-	cmd := exec.Command(cmdName, cmdArgs...)
-
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("%v", err)
-		return errors.New("There was an error tagging the docker image")
+	if _, err := RunCommand(exec.Command("sudo", "docker", "tag", "-f", program_name+":"+version_tag, TaggedName(docker_host, program_name, version_tag)), "tagging docker image"); err != nil {
+		return err
 	}
 
-	cmdName = "sudo"
-	cmdArgs = []string{"docker", "push", TaggedName(docker_host, program_name, version_tag)}
-	cmd = exec.Command(cmdName, cmdArgs...)
-
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("%v", err)
-		return errors.New("There was an error pushing the docker image")
+	if _, err := RunCommand(exec.Command("sudo", "docker", "push", TaggedName(docker_host, program_name, version_tag)), "pushing to docker host"); err != nil {
+		return err
 	}
 	return nil
 }
@@ -171,31 +166,27 @@ func CreateApplicationVersion(application_name string, version_tag string, progr
 	defer os.Remove(zip_path)
 
 	// Now upload that file with the AWS CLI to S3
-	cmd := exec.Command("aws", "s3", "cp", zip_path, "s3://"+s3_bucket)
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("%v", err)
-		return "", errors.New("There was an error uploading to S3")
+	if _, err := RunCommand(exec.Command("aws", "s3", "cp", zip_path, "s3://"+s3_bucket),
+		"uploading to S3"); err != nil {
+		return "", err
 	}
 
 	// Now Create a new application version on AWS.
-	cmd = exec.Command("aws", "elasticbeanstalk", "create-application-version",
+	if _, err := RunCommand(exec.Command("aws", "elasticbeanstalk", "create-application-version",
 		"--application-name", application_name,
 		"--version-label", version_tag,
-		"--source-bundle", "S3Bucket="+s3_bucket+",S3Key="+zip_filename)
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("%v", err)
-		return "", errors.New("There was an error uploading to S3")
+		"--source-bundle", "S3Bucket="+s3_bucket+",S3Key="+zip_filename), "creating application version"); err != nil {
+		return "", err
 	}
+
 	return version_tag, nil
 }
 
 func UpdateEBEnvironment(env_name string, app_ver string) error {
-	cmd := exec.Command("aws", "elasticbeanstalk", "update-environment",
+	if _, err := RunCommand(exec.Command("aws", "elasticbeanstalk", "update-environment",
 		"--environment-name", env_name,
-		"--version-label", app_ver)
-	if err := cmd.Run(); err != nil {
-		fmt.Printf("%v", err)
-		return errors.New("There was an error updating the environment.  Does it exist?")
+		"--version-label", app_ver), "updating the EB environment"); err != nil {
+		return err
 	}
 	return nil
 }
