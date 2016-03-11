@@ -21,7 +21,7 @@ func PerformSnapshot(conf GoBeanConfig) error {
 	}
 
 	println("Snapshot version:" + snapshot_version)
-	//	DeployVersion(conf, snapshot_version)
+	DeployVersion(conf, snapshot_version)
 	return nil
 }
 
